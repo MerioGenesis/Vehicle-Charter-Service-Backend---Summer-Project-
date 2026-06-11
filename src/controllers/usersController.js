@@ -1,0 +1,109 @@
+const pool = require('../db/pool');
+
+const USER_SELECT = `
+  SELECT u.u_id, u.u_f_name, u.u_l_name, u.u_gender, u.u_dob,
+         u.u_address, u.u_city, u.u_postcode, u.u_email, u.u_phone,
+         u.u_ut_id, ut.ut_name AS userType
+  FROM   Users u
+  LEFT JOIN UserTypes ut ON u.u_ut_id = ut.ut_id
+`;
+
+// GET /api/vcharter/users
+const getUsers = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || null;
+    const page  = parseInt(req.query.page)  || 1;
+
+    let sql = USER_SELECT + ' ORDER BY u.u_id';
+    const params = [];
+
+    if (limit) {
+      sql += ' LIMIT ? OFFSET ?';
+      params.push(limit, (page - 1) * limit);
+    }
+
+    const [rows] = await pool.query(sql, params);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// GET /api/vcharter/users/:id
+const getUserById = async (req, res) => {
+  try {
+    const [rows] = await pool.query(USER_SELECT + ' WHERE u.u_id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// POST /api/vcharter/users
+const createUser = async (req, res) => {
+  try {
+    const { u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_ut_id } = req.body;
+    if (!u_f_name || !u_l_name || !u_gender || !u_dob || !u_address || !u_city || !u_postcode || !u_email || !u_phone || !u_ut_id) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO Users (u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_ut_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_ut_id]
+    );
+
+    const [rows] = await pool.query(USER_SELECT + ' WHERE u.u_id = ?', [result.insertId]);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Email already exists' });
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// PUT /api/vcharter/users/:id
+const updateUser = async (req, res) => {
+  try {
+    const fields = ['u_f_name', 'u_l_name', 'u_gender', 'u_dob', 'u_address', 'u_city', 'u_postcode', 'u_email', 'u_phone', 'u_ut_id'];
+    const updates = [];
+    const params  = [];
+
+    fields.forEach(f => {
+      if (req.body[f] !== undefined) {
+        updates.push(`${f} = ?`);
+        params.push(req.body[f]);
+      }
+    });
+
+    if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
+
+    params.push(req.params.id);
+    await pool.query(`UPDATE Users SET ${updates.join(', ')} WHERE u_id = ?`, params);
+
+    const [rows] = await pool.query(USER_SELECT + ' WHERE u.u_id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Email already exists' });
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// DELETE /api/vcharter/users/:id
+const deleteUser = async (req, res) => {
+  try {
+    const [result] = await pool.query('DELETE FROM Users WHERE u_id = ?', [req.params.id]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = { getUsers, getUserById, createUser, updateUser, deleteUser };
