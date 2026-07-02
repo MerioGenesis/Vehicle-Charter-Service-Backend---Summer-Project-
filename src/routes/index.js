@@ -16,6 +16,11 @@ const vehicleCertificatesCtrl = require('../controllers/vehicleCertificatesContr
 const certificatesCtrl        = require('../controllers/certificatesController');
 const licensesCtrl            = require('../controllers/licensesController');
 const testsCtrl                = require('../controllers/testsController');
+const authCtrl                 = require('../controllers/authController');
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+router.post('/auth/login',         authCtrl.login);
+router.post('/auth/context-login', authCtrl.contextLogin);
 
 // ── Vehicles ──────────────────────────────────────────────────────────────────
 router.get   ('/vehicles',     vehiclesCtrl.getVehicles);

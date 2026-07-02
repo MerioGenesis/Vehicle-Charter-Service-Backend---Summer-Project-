@@ -23,6 +23,11 @@
 --     assigned. "Unstaffed" bookings are therefore bookings with NO matching
 --     work_assignments row (see workAssignmentsController.js), not a row with
 --     a NULL wa_u_id.
+--   - users.u_password was added after the appendix was written, to support
+--     login (see authController.js / usersController.js). On the live database
+--     it was added via sql/migrations/001_add_user_password.sql as NULLable,
+--     since existing rows predate authentication; here, for fresh installs, it
+--     is declared NOT NULL since every new registration must set one.
 
 CREATE DATABASE IF NOT EXISTS vehiclecharter
   CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
@@ -67,6 +72,7 @@ CREATE TABLE users (
   u_postcode VARCHAR(7) NOT NULL,
   u_email    VARCHAR(50) NOT NULL,
   u_phone    VARCHAR(10) NOT NULL,
+  u_password VARCHAR(255) NOT NULL,
   u_ut_id    INT(1) NOT NULL,
   PRIMARY KEY (u_id),
   UNIQUE KEY c_email (u_email),

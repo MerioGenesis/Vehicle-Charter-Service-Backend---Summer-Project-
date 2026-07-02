@@ -13,15 +13,18 @@ npm install
 
 ### 2. Create the database
 If you already have the `vehiclecharter` database set up in phpMyAdmin (with
-real data), skip this step — the app will connect to it directly.
+real data), skip the import — but if it predates login support, run
+`sql/migrations/001_add_user_password.sql` once (via phpMyAdmin's SQL tab) to
+add the `u_password` column before using `/auth/login` or registration.
 
 Otherwise, with XAMPP's Apache and MySQL modules running, open phpMyAdmin
 (`http://localhost/phpmyadmin`) and import the schema:
 
 - **Import** tab → choose `sql/schema.sql` → Go. This creates the
-  `vehiclecharter` database and all 14 tables, matching the live schema.
+  `vehiclecharter` database and all 14 tables, matching the live schema
+  (including `u_password`).
 - Optionally import `sql/seed.sql` afterwards for sample data that exercises
-  every endpoint below.
+  every endpoint below — all seeded users share the password `Password123!`.
 
 ### 3. Configure environment
 Copy `.env.example` to `.env` and fill in your XAMPP credentials:
@@ -32,6 +35,8 @@ DB_PASSWORD=          ← leave blank if no password set in XAMPP
 DB_NAME=vehiclecharter
 DB_PORT=3306
 PORT=5000
+JWT_SECRET=            ← set this to any long random string
+JWT_EXPIRES_IN=1d
 ```
 
 ### 4. Start the server
@@ -76,16 +81,41 @@ http://localhost:5000/api/vcharter
 
 ---
 
+### Auth
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/login` | Log in with `{ u_email, u_password }`, returns `{ token, user }` |
+| POST | `/auth/context-login` | Log in as an existing user with `{ u_id }` and **no password check** |
+
+There is no separate `/auth/register` — registration is `POST /users` (see
+below), which always creates a customer account (`u_ut_id` 1). Employee and
+admin accounts have no self-registration route; they're created directly via
+`POST /users` with a different `u_ut_id`, or in phpMyAdmin.
+
+`/auth/context-login` exists purely as a development/demo convenience: the
+frontend lets you pick a user type, then a real person of that type from a
+dropdown (`GET /users?ut_id=N`, see below), and log in as them without typing
+credentials. It still issues a real JWT for a real database user — it just
+skips the password check — so treat it as a temporary shortcut, not something
+to ship to production without locking it down or removing it.
+
+`token` is a JWT signed with `JWT_SECRET`, valid for `JWT_EXPIRES_IN` (default
+1 day). No routes currently require it — there's no auth middleware yet, so
+every endpoint is still open. The token exists for the frontend to know who's
+logged in and to attach later if/when specific routes are locked down.
+
+---
+
 ### Users
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/users` | All users (supports `?limit=N&page=N`) |
+| GET | `/users` | All users (supports `?ut_id=N` filter, `?limit=N&page=N` pagination) |
 | GET | `/users/:id` | Single user |
-| POST | `/users` | Create user |
-| PUT | `/users/:id` | Update user (partial) |
+| POST | `/users` | Create user — requires `u_password` (min. 8 characters), hashed with bcrypt before storage |
+| PUT | `/users/:id` | Update user (partial); include `u_password` to change it |
 | DELETE | `/users/:id` | Delete user |
 
-**Response shape (with FK resolved):**
+**Response shape (with FK resolved, password hash never included):**
 ```json
 { "u_id", "u_f_name", "u_l_name", "u_gender", "u_dob", "u_address", "u_city", "u_postcode", "u_email", "u_phone", "u_ut_id", "userType" }
 ```

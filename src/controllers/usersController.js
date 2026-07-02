@@ -1,4 +1,7 @@
-const pool = require('../db/pool');
+const bcrypt = require('bcrypt');
+const pool   = require('../db/pool');
+
+const SALT_ROUNDS = 10;
 
 const USER_SELECT = `
   SELECT u.u_id, u.u_f_name, u.u_l_name, u.u_gender, u.u_dob,
@@ -8,14 +11,22 @@ const USER_SELECT = `
   LEFT JOIN UserTypes ut ON u.u_ut_id = ut.ut_id
 `;
 
-// GET /api/vcharter/users
+// GET /api/vcharter/users  (optional ?ut_id=N filter, ?limit=N&page=N pagination)
 const getUsers = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || null;
     const page  = parseInt(req.query.page)  || 1;
+    const utId  = req.query.ut_id ? parseInt(req.query.ut_id) : null;
 
-    let sql = USER_SELECT + ' ORDER BY u.u_id';
+    let sql = USER_SELECT;
     const params = [];
+
+    if (utId) {
+      sql += ' WHERE u.u_ut_id = ?';
+      params.push(utId);
+    }
+
+    sql += ' ORDER BY u.u_id';
 
     if (limit) {
       sql += ' LIMIT ? OFFSET ?';
@@ -42,18 +53,23 @@ const getUserById = async (req, res) => {
   }
 };
 
-// POST /api/vcharter/users
+// POST /api/vcharter/users  (also used as the customer registration endpoint)
 const createUser = async (req, res) => {
   try {
-    const { u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_ut_id } = req.body;
-    if (!u_f_name || !u_l_name || !u_gender || !u_dob || !u_address || !u_city || !u_postcode || !u_email || !u_phone || !u_ut_id) {
-      return res.status(400).json({ error: 'All fields are required' });
+    const { u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_password, u_ut_id } = req.body;
+    if (!u_f_name || !u_l_name || !u_gender || !u_dob || !u_address || !u_city || !u_postcode || !u_email || !u_phone || !u_password || !u_ut_id) {
+      return res.status(400).json({ error: 'All fields, including u_password, are required' });
+    }
+    if (u_password.length < 8) {
+      return res.status(400).json({ error: 'u_password must be at least 8 characters' });
     }
 
+    const hashedPassword = await bcrypt.hash(u_password, SALT_ROUNDS);
+
     const [result] = await pool.query(
-      `INSERT INTO Users (u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_ut_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_ut_id]
+      `INSERT INTO Users (u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_password, u_ut_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, hashedPassword, u_ut_id]
     );
 
     const [rows] = await pool.query(USER_SELECT + ' WHERE u.u_id = ?', [result.insertId]);
@@ -78,6 +94,14 @@ const updateUser = async (req, res) => {
         params.push(req.body[f]);
       }
     });
+
+    if (req.body.u_password !== undefined) {
+      if (req.body.u_password.length < 8) {
+        return res.status(400).json({ error: 'u_password must be at least 8 characters' });
+      }
+      updates.push('u_password = ?');
+      params.push(await bcrypt.hash(req.body.u_password, SALT_ROUNDS));
+    }
 
     if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
 
