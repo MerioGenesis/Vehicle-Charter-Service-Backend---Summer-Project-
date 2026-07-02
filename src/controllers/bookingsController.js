@@ -18,7 +18,10 @@ const getBookings = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || null;
     const page  = parseInt(req.query.page)  || 1;
-    const uId   = req.query.u_id ? parseInt(req.query.u_id) : null;
+    let   uId   = req.query.u_id ? parseInt(req.query.u_id) : null;
+
+    // Customers can only ever see their own bookings, regardless of query params.
+    if (req.user.ut_name === 'Customer') uId = req.user.u_id;
 
     let sql = BOOKING_SELECT;
     const params = [];
@@ -58,15 +61,20 @@ const getBookingById = async (req, res) => {
 // POST /api/vcharter/bookings
 const createBooking = async (req, res) => {
   try {
-    const { b_pickUpLocation, b_destination, b_dateFrom, b_timeStart, b_u_id, b_v_id } = req.body;
-    if (!b_dateFrom || !b_timeStart || !b_u_id || !b_v_id) {
-      return res.status(400).json({ error: 'b_dateFrom, b_timeStart, b_u_id and b_v_id are required' });
+    const { b_pickUpLocation, b_destination, b_dateFrom, b_timeStart, b_v_id } = req.body;
+    if (!b_dateFrom || !b_timeStart || !b_v_id) {
+      return res.status(400).json({ error: 'b_dateFrom, b_timeStart and b_v_id are required' });
     }
+
+    // A booking always belongs to the caller, unless staff are booking on a
+    // customer's behalf and explicitly pass a b_u_id.
+    const isPrivileged = req.user.ut_name === 'Employee' || req.user.ut_name === 'Admin';
+    const ownerId = (isPrivileged && req.body.b_u_id) ? req.body.b_u_id : req.user.u_id;
 
     const [result] = await pool.query(
       `INSERT INTO Bookings (b_pickUpLocation, b_destination, b_dateFrom, b_timeStart, b_bookingTimestamp, b_u_id, b_v_id)
        VALUES (?, ?, ?, ?, NOW(), ?, ?)`,
-      [b_pickUpLocation || null, b_destination || null, b_dateFrom, b_timeStart, b_u_id, b_v_id]
+      [b_pickUpLocation || null, b_destination || null, b_dateFrom, b_timeStart, ownerId, b_v_id]
     );
 
     const [rows] = await pool.query(BOOKING_SELECT + ' WHERE b.b_id = ?', [result.insertId]);
@@ -80,7 +88,8 @@ const createBooking = async (req, res) => {
 // PUT /api/vcharter/bookings/:id
 const updateBooking = async (req, res) => {
   try {
-    const fields = ['b_pickUpLocation', 'b_destination', 'b_dateFrom', 'b_timeStart', 'b_u_id', 'b_v_id'];
+    const fields = ['b_pickUpLocation', 'b_destination', 'b_dateFrom', 'b_timeStart', 'b_v_id'];
+    if (req.user.ut_name === 'Admin') fields.push('b_u_id'); // only Admin may reassign a booking's owner
     const updates = [];
     const params  = [];
 

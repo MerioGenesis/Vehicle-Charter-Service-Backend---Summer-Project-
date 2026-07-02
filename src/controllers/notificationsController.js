@@ -11,17 +11,22 @@ const NOTIF_SELECT = `
   LEFT JOIN Vehicle_Types vt ON v.v_vt_id = vt.vt_id
 `;
 
-// GET /api/vcharter/notifications  (?unread=true for unread only)
+// GET /api/vcharter/notifications  (?unread=true, ?u_id=N for "my notifications")
 const getNotifications = async (req, res) => {
   try {
     const unread = req.query.unread === 'true';
+    let   uId    = req.query.u_id ? parseInt(req.query.u_id) : null;
+
+    // Customers can only ever see their own notifications, regardless of query params.
+    if (req.user.ut_name === 'Customer') uId = req.user.u_id;
 
     let sql = NOTIF_SELECT;
     const params = [];
+    const where  = [];
 
-    if (unread) {
-      sql += ' WHERE n.n_status = 0';
-    }
+    if (uId)    { where.push('b.b_u_id = ?'); params.push(uId); }
+    if (unread) { where.push('n.n_status = 0'); }
+    if (where.length) sql += ' WHERE ' + where.join(' AND ');
 
     sql += ' ORDER BY n.n_timestamp DESC';
     const [rows] = await pool.query(sql, params);

@@ -17,6 +17,9 @@ const certificatesCtrl        = require('../controllers/certificatesController')
 const licensesCtrl            = require('../controllers/licensesController');
 const testsCtrl                = require('../controllers/testsController');
 const authCtrl                 = require('../controllers/authController');
+const {
+  requireAuth, optionalAuth, requireRole, requireSelfOrRole, requireBookingOwnerOrAdmin,
+} = require('../middleware/auth');
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 router.post('/auth/login',         authCtrl.login);
@@ -34,29 +37,34 @@ router.get('/vehicletypes',     vehicleTypesCtrl.getVehicleTypes);
 router.get('/vehicletypes/:id', vehicleTypesCtrl.getVehicleTypeById);
 
 // ── Users ─────────────────────────────────────────────────────────────────────
-router.get   ('/users',     usersCtrl.getUsers);
-router.get   ('/users/:id', usersCtrl.getUserById);
-router.post  ('/users',     usersCtrl.createUser);
-router.put   ('/users/:id', usersCtrl.updateUser);
-router.delete('/users/:id', usersCtrl.deleteUser);
+// GET /users uses optionalAuth (not requireAuth): the login screen's "pick who
+// you are" dropdown calls this before the caller has a token — see the
+// PUBLIC_USER_SELECT projection in usersController.getUsers.
+router.get   ('/users',     optionalAuth,                                 usersCtrl.getUsers);
+router.get   ('/users/:id', requireAuth, requireSelfOrRole('id', 'Admin'), usersCtrl.getUserById);
+router.post  ('/users',     optionalAuth,                                 usersCtrl.createUser);
+router.put   ('/users/:id', requireAuth, requireSelfOrRole('id', 'Admin'), usersCtrl.updateUser);
+router.delete('/users/:id', requireAuth, requireRole('Admin'),            usersCtrl.deleteUser);
 
 // ── User Types (read-only) ────────────────────────────────────────────────────
 router.get('/usertypes',     userTypesCtrl.getUserTypes);
 router.get('/usertypes/:id', userTypesCtrl.getUserTypeById);
 
-// ── Bookings ──────────────────────────────────────────────────────────────────
-router.get   ('/bookings',     bookingsCtrl.getBookings);
-router.get   ('/bookings/:id', bookingsCtrl.getBookingById);
-router.post  ('/bookings',     bookingsCtrl.createBooking);
-router.put   ('/bookings/:id', bookingsCtrl.updateBooking);
-router.delete('/bookings/:id', bookingsCtrl.deleteBooking);
+// ── Bookings (no guest access — always requires a token) ─────────────────────
+router.get   ('/bookings',     requireAuth,                                   bookingsCtrl.getBookings);
+router.get   ('/bookings/:id', requireAuth, requireBookingOwnerOrAdmin('id'), bookingsCtrl.getBookingById);
+router.post  ('/bookings',     requireAuth,                                   bookingsCtrl.createBooking);
+router.put   ('/bookings/:id', requireAuth, requireBookingOwnerOrAdmin('id'), bookingsCtrl.updateBooking);
+router.delete('/bookings/:id', requireAuth, requireBookingOwnerOrAdmin('id'), bookingsCtrl.deleteBooking);
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
+// GET stays PUBLIC — guests can browse reviews (see landing page / sitemap).
+// Only creating/editing a review requires being signed in.
 router.get   ('/reviews',     reviewsCtrl.getReviews);
 router.get   ('/reviews/:id', reviewsCtrl.getReviewById);
-router.post  ('/reviews',     reviewsCtrl.createReview);
-router.put   ('/reviews/:id', reviewsCtrl.updateReview);
-router.delete('/reviews/:id', reviewsCtrl.deleteReview);
+router.post  ('/reviews',     requireAuth,                       reviewsCtrl.createReview);
+router.put   ('/reviews/:id', requireAuth, requireRole('Admin'), reviewsCtrl.updateReview);
+router.delete('/reviews/:id', requireAuth, requireRole('Admin'), reviewsCtrl.deleteReview);
 
 // ── Work Assignments ──────────────────────────────────────────────────────────
 // ?u_id=N → employee's assignments | ?available=true → unstaffed assignments
@@ -65,13 +73,13 @@ router.post  ('/workassignments',          workAssignmentsCtrl.createWorkAssignm
 router.put   ('/workassignments/:b_id',    workAssignmentsCtrl.updateWorkAssignment);
 router.delete('/workassignments/:b_id',    workAssignmentsCtrl.deleteWorkAssignment);
 
-// ── Notifications ─────────────────────────────────────────────────────────────
-// ?unread=true → unread only
-router.get   ('/notifications',     notificationsCtrl.getNotifications);
-router.get   ('/notifications/:id', notificationsCtrl.getNotificationById);
-router.post  ('/notifications',     notificationsCtrl.createNotification);
-router.put   ('/notifications/:id', notificationsCtrl.updateNotification);
-router.delete('/notifications/:id', notificationsCtrl.deleteNotification);
+// ── Notifications (no guest access — always requires a token) ────────────────
+// ?unread=true, ?u_id=N → "my notifications"
+router.get   ('/notifications',     requireAuth,                                  notificationsCtrl.getNotifications);
+router.get   ('/notifications/:id', requireAuth,                                  notificationsCtrl.getNotificationById);
+router.post  ('/notifications',     requireAuth, requireRole('Employee', 'Admin'), notificationsCtrl.createNotification);
+router.put   ('/notifications/:id', requireAuth,                                  notificationsCtrl.updateNotification);
+router.delete('/notifications/:id', requireAuth, requireRole('Admin'),            notificationsCtrl.deleteNotification);
 
 // ── Licenses Obtained ─────────────────────────────────────────────────────────
 // ?u_id=N → employee-scoped

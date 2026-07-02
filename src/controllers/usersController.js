@@ -12,13 +12,26 @@ const USER_SELECT = `
 `;
 
 // GET /api/vcharter/users  (optional ?ut_id=N filter, ?limit=N&page=N pagination)
+//
+// Route uses optionalAuth, not requireAuth: the login screen's "pick who you
+// are" dropdown (see authController.contextLogin) calls this BEFORE the caller
+// has a token, so it can't require one. Anonymous/non-staff callers get a
+// minimal name-only projection (enough for that picker); Employee/Admin
+// callers get the full record set.
+const PUBLIC_USER_SELECT = `
+  SELECT u.u_id, u.u_f_name, u.u_l_name, ut.ut_name AS userType
+  FROM   Users u
+  LEFT JOIN UserTypes ut ON u.u_ut_id = ut.ut_id
+`;
+
 const getUsers = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || null;
     const page  = parseInt(req.query.page)  || 1;
     const utId  = req.query.ut_id ? parseInt(req.query.ut_id) : null;
 
-    let sql = USER_SELECT;
+    const isStaff = req.user && (req.user.ut_name === 'Employee' || req.user.ut_name === 'Admin');
+    let sql = isStaff ? USER_SELECT : PUBLIC_USER_SELECT;
     const params = [];
 
     if (utId) {
@@ -57,19 +70,24 @@ const getUserById = async (req, res) => {
 const createUser = async (req, res) => {
   try {
     const { u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_password, u_ut_id } = req.body;
-    if (!u_f_name || !u_l_name || !u_gender || !u_dob || !u_address || !u_city || !u_postcode || !u_email || !u_phone || !u_password || !u_ut_id) {
+    if (!u_f_name || !u_l_name || !u_gender || !u_dob || !u_address || !u_city || !u_postcode || !u_email || !u_phone || !u_password) {
       return res.status(400).json({ error: 'All fields, including u_password, are required' });
     }
     if (u_password.length < 8) {
       return res.status(400).json({ error: 'u_password must be at least 8 characters' });
     }
 
+    // Anonymous/self-registration is always a Customer account. Only an
+    // authenticated Admin may create an Employee/Admin account directly.
+    const isAdmin = req.user && req.user.ut_name === 'Admin';
+    const roleId  = (isAdmin && u_ut_id) ? u_ut_id : 1;
+
     const hashedPassword = await bcrypt.hash(u_password, SALT_ROUNDS);
 
     const [result] = await pool.query(
       `INSERT INTO Users (u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, u_password, u_ut_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, hashedPassword, u_ut_id]
+      [u_f_name, u_l_name, u_gender, u_dob, u_address, u_city, u_postcode, u_email, u_phone, hashedPassword, roleId]
     );
 
     const [rows] = await pool.query(USER_SELECT + ' WHERE u.u_id = ?', [result.insertId]);
@@ -84,7 +102,8 @@ const createUser = async (req, res) => {
 // PUT /api/vcharter/users/:id
 const updateUser = async (req, res) => {
   try {
-    const fields = ['u_f_name', 'u_l_name', 'u_gender', 'u_dob', 'u_address', 'u_city', 'u_postcode', 'u_email', 'u_phone', 'u_ut_id'];
+    const fields = ['u_f_name', 'u_l_name', 'u_gender', 'u_dob', 'u_address', 'u_city', 'u_postcode', 'u_email', 'u_phone'];
+    if (req.user.ut_name === 'Admin') fields.push('u_ut_id'); // only Admin may change roles
     const updates = [];
     const params  = [];
 

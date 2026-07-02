@@ -4,7 +4,7 @@ const pool   = require('../db/pool');
 
 const signToken = (user) =>
   jwt.sign(
-    { u_id: user.u_id, u_ut_id: user.u_ut_id },
+    { u_id: user.u_id, u_ut_id: user.u_ut_id, ut_name: user.userType },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
   );

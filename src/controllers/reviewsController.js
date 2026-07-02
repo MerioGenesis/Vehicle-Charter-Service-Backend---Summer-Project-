@@ -7,14 +7,22 @@ const REVIEW_SELECT = `
   LEFT JOIN Users u ON r.r_u_id = u.u_id
 `;
 
-// GET /api/vcharter/reviews
+// GET /api/vcharter/reviews  (public; optional ?u_id=N for "my reviews")
 const getReviews = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || null;
     const page  = parseInt(req.query.page)  || 1;
+    const uId   = req.query.u_id ? parseInt(req.query.u_id) : null;
 
-    let sql = REVIEW_SELECT + ' ORDER BY r.r_timestamp DESC';
+    let sql = REVIEW_SELECT;
     const params = [];
+
+    if (uId) {
+      sql += ' WHERE r.r_u_id = ?';
+      params.push(uId);
+    }
+
+    sql += ' ORDER BY r.r_timestamp DESC';
 
     if (limit) {
       sql += ' LIMIT ? OFFSET ?';
@@ -44,9 +52,9 @@ const getReviewById = async (req, res) => {
 // POST /api/vcharter/reviews
 const createReview = async (req, res) => {
   try {
-    const { r_content, r_rating, r_u_id } = req.body;
-    if (!r_content || r_rating === undefined || !r_u_id) {
-      return res.status(400).json({ error: 'r_content, r_rating and r_u_id are required' });
+    const { r_content, r_rating } = req.body;
+    if (!r_content || r_rating === undefined) {
+      return res.status(400).json({ error: 'r_content and r_rating are required' });
     }
     if (r_rating < 1 || r_rating > 5) {
       return res.status(400).json({ error: 'r_rating must be between 1 and 5' });
@@ -54,7 +62,7 @@ const createReview = async (req, res) => {
 
     const [result] = await pool.query(
       'INSERT INTO Reviews (r_content, r_rating, r_timestamp, r_u_id) VALUES (?, ?, NOW(), ?)',
-      [r_content, r_rating, r_u_id]
+      [r_content, r_rating, req.user.u_id]
     );
 
     const [rows] = await pool.query(REVIEW_SELECT + ' WHERE r.r_id = ?', [result.insertId]);
