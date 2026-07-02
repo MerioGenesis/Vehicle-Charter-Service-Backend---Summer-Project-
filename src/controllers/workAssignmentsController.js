@@ -13,18 +13,36 @@ const WA_SELECT = `
   LEFT JOIN Users         u  ON wa.wa_u_id = u.u_id
 `;
 
-// GET /api/vcharter/workassignments  (?u_id=N for employee-scoped, ?available=true for unstaffed)
+// A booking only gets a Work_Assignments row once an employee is assigned
+// (wa_u_id is NOT NULL there), so "available/unstaffed" means a booking with
+// no matching row at all — found by joining the other way, from Bookings.
+const AVAILABLE_SELECT = `
+  SELECT b.b_id AS wa_b_id, NULL AS wa_u_id, NULL AS wa_startTime,
+         b.b_dateFrom,
+         v.v_name, v.v_brand,
+         vt.vt_name
+  FROM   Bookings b
+  LEFT JOIN Work_Assignments wa ON wa.wa_b_id = b.b_id
+  LEFT JOIN Vehicles         v  ON b.b_v_id   = v.v_id
+  LEFT JOIN Vehicle_Types    vt ON v.v_vt_id  = vt.vt_id
+  WHERE  wa.wa_b_id IS NULL
+`;
+
+// GET /api/vcharter/workassignments  (?u_id=N for employee-scoped, ?available=true for unstaffed bookings)
 const getWorkAssignments = async (req, res) => {
   try {
     const uId       = req.query.u_id       ? parseInt(req.query.u_id) : null;
     const available = req.query.available  === 'true';
 
+    if (available) {
+      const [rows] = await pool.query(AVAILABLE_SELECT + ' ORDER BY b.b_dateFrom');
+      return res.json(rows);
+    }
+
     let sql = WA_SELECT;
     const params = [];
 
-    if (available) {
-      sql += ' WHERE wa.wa_u_id IS NULL';
-    } else if (uId) {
+    if (uId) {
       sql += ' WHERE wa.wa_u_id = ?';
       params.push(uId);
     }
@@ -42,13 +60,13 @@ const getWorkAssignments = async (req, res) => {
 const createWorkAssignment = async (req, res) => {
   try {
     const { wa_b_id, wa_u_id, wa_startTime } = req.body;
-    if (!wa_b_id || !wa_startTime) {
-      return res.status(400).json({ error: 'wa_b_id and wa_startTime are required' });
+    if (!wa_b_id || !wa_u_id || !wa_startTime) {
+      return res.status(400).json({ error: 'wa_b_id, wa_u_id and wa_startTime are required' });
     }
 
     await pool.query(
       'INSERT INTO Work_Assignments (wa_b_id, wa_u_id, wa_startTime) VALUES (?, ?, ?)',
-      [wa_b_id, wa_u_id || null, wa_startTime]
+      [wa_b_id, wa_u_id, wa_startTime]
     );
 
     const [rows] = await pool.query(WA_SELECT + ' WHERE wa.wa_b_id = ?', [wa_b_id]);

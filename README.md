@@ -11,18 +11,30 @@ Node.js + Express REST API connecting to a MySQL database (XAMPP / phpMyAdmin).
 npm install
 ```
 
-### 2. Configure environment
+### 2. Create the database
+If you already have the `vehiclecharter` database set up in phpMyAdmin (with
+real data), skip this step — the app will connect to it directly.
+
+Otherwise, with XAMPP's Apache and MySQL modules running, open phpMyAdmin
+(`http://localhost/phpmyadmin`) and import the schema:
+
+- **Import** tab → choose `sql/schema.sql` → Go. This creates the
+  `vehiclecharter` database and all 14 tables, matching the live schema.
+- Optionally import `sql/seed.sql` afterwards for sample data that exercises
+  every endpoint below.
+
+### 3. Configure environment
 Copy `.env.example` to `.env` and fill in your XAMPP credentials:
 ```
 DB_HOST=localhost
 DB_USER=root
 DB_PASSWORD=          ← leave blank if no password set in XAMPP
-DB_NAME=vcharter
+DB_NAME=vehiclecharter
 DB_PORT=3306
 PORT=5000
 ```
 
-### 3. Start the server
+### 4. Start the server
 ```bash
 npm start          # production
 npm run dev        # with nodemon (auto-restart on file changes)
@@ -163,6 +175,25 @@ http://localhost:5000/api/vcharter
 
 ---
 
+### Certificates, Licenses, Tests (lookup/reference tables)
+These back the `Vehicle_Certificates`, `Licenses_Obtained` and `Tests_Taken`
+join tables above (e.g. so an admin can add a new certificate/license/test
+type before assigning it to a vehicle or employee).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/certificates` | All certificate types |
+| GET | `/certificates/:id` | Single certificate type |
+| POST | `/certificates` | Add certificate type |
+| GET | `/licenses` | All license types |
+| GET | `/licenses/:id` | Single license type |
+| POST | `/licenses` | Add license type |
+| GET | `/tests` | All test types |
+| GET | `/tests/:id` | Single test type |
+| POST | `/tests` | Add test type |
+
+---
+
 ## Pagination
 Supported on: `/vehicles`, `/users`, `/bookings`, `/reviews`
 ```
@@ -174,3 +205,24 @@ GET /api/vcharter/vehicles?limit=10&page=2
 - `/bookings?u_id=25` — bookings for a specific customer
 - `/workassignments?available=true` — unstaffed assignments
 - `/notifications?unread=true` — unread notifications
+
+---
+
+## Deviations from the Data Model Specification Document
+
+`sql/schema.sql` matches Appendix A/B exactly, with two documented exceptions:
+
+1. **`Bookings.b_destination`** is included even though Appendix B's data
+   dictionary omits it. The Endpoint Specification's validation tests
+   (Appendix A, Figure A.1) both send and return this field, and the existing
+   `bookingsController.js` already relies on it — so it was kept rather than
+   stripped, to avoid breaking working code.
+2. **`Work_Assignments`** uses `wa_b_id` as the sole `PRIMARY KEY`, rather
+   than the documented composite `(wa_b_id, wa_u_id)`. MySQL does not allow a
+   `NULL` value inside a primary key, but the "unstaffed assignment" feature
+   (`GET /workassignments?available=true`, Appendix C Figure C.6) depends on
+   `wa_u_id` being `NULL` until an employee is assigned. `wa_u_id` is kept as
+   a nullable, indexed foreign key instead.
+
+Worth noting in the write-up if asked to justify the implementation against
+the design documents.

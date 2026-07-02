@@ -13,6 +13,9 @@ const notificationsCtrl       = require('../controllers/notificationsController'
 const licensesObtainedCtrl    = require('../controllers/licensesObtainedController');
 const testsTakenCtrl          = require('../controllers/testsTakenController');
 const vehicleCertificatesCtrl = require('../controllers/vehicleCertificatesController');
+const certificatesCtrl        = require('../controllers/certificatesController');
+const licensesCtrl            = require('../controllers/licensesController');
+const testsCtrl                = require('../controllers/testsController');
 
 // ── Vehicles ──────────────────────────────────────────────────────────────────
 router.get   ('/vehicles',     vehiclesCtrl.getVehicles);
@@ -82,5 +85,20 @@ router.delete('/teststaken/:t_id/:u_id/:testDate',    testsTakenCtrl.deleteTestT
 router.get   ('/vehiclecertificates',                               vehicleCertificatesCtrl.getVehicleCertificates);
 router.post  ('/vehiclecertificates',                               vehicleCertificatesCtrl.createVehicleCertificate);
 router.delete('/vehiclecertificates/:c_id/:v_id/:dateObtained',     vehicleCertificatesCtrl.deleteVehicleCertificate);
+
+// ── Certificates (lookup) ─────────────────────────────────────────────────────
+router.get ('/certificates',     certificatesCtrl.getCertificates);
+router.get ('/certificates/:id', certificatesCtrl.getCertificateById);
+router.post('/certificates',     certificatesCtrl.createCertificate);
+
+// ── Licenses (lookup) ─────────────────────────────────────────────────────────
+router.get ('/licenses',     licensesCtrl.getLicenses);
+router.get ('/licenses/:id', licensesCtrl.getLicenseById);
+router.post('/licenses',     licensesCtrl.createLicense);
+
+// ── Tests (lookup) ────────────────────────────────────────────────────────────
+router.get ('/tests',     testsCtrl.getTests);
+router.get ('/tests/:id', testsCtrl.getTestById);
+router.post('/tests',     testsCtrl.createTest);
 
 module.exports = router;
