@@ -3,7 +3,7 @@ const pool = require('../db/pool');
 const WA_SELECT = `
   SELECT wa.wa_b_id, wa.wa_u_id, wa.wa_startTime,
          b.b_dateFrom, b.b_status,
-         v.v_name, v.v_brand,
+         v.v_name, v.v_brand, v.v_imageURL,
          vt.vt_name,
          u.u_f_name, u.u_l_name
   FROM   Work_Assignments wa
@@ -21,7 +21,7 @@ const WA_SELECT = `
 const AVAILABLE_SELECT = `
   SELECT b.b_id AS wa_b_id, NULL AS wa_u_id, NULL AS wa_startTime,
          b.b_dateFrom, b.b_timeStart, b.b_pickUpLocation, b.b_destination, b.b_status,
-         v.v_name, v.v_brand,
+         v.v_name, v.v_brand, v.v_imageURL,
          vt.vt_name
   FROM   Bookings b
   LEFT JOIN Work_Assignments wa ON wa.wa_b_id = b.b_id
@@ -61,7 +61,8 @@ const getWorkAssignments = async (req, res) => {
 // POST /api/vcharter/workassignments
 // Assigning an employee to a booking is what moves it from pending to
 // confirmed (see bookings.b_status). Employees can only ever assign
-// themselves; only Admins may name a different employee.
+// themselves; only Admins may name a different employee. The customer gets
+// an unread notification on their booking once it's confirmed.
 const createWorkAssignment = async (req, res) => {
   try {
     const { wa_b_id, wa_startTime } = req.body;
@@ -78,6 +79,10 @@ const createWorkAssignment = async (req, res) => {
       [wa_b_id, wa_u_id, wa_startTime]
     );
     await pool.query("UPDATE Bookings SET b_status = 'confirmed' WHERE b_id = ?", [wa_b_id]);
+    await pool.query(
+      'INSERT INTO Notifications (n_timestamp, n_status, n_b_id) VALUES (NOW(), 0, ?)',
+      [wa_b_id]
+    );
 
     const [rows] = await pool.query(WA_SELECT + ' WHERE wa.wa_b_id = ?', [wa_b_id]);
     res.status(201).json(rows[0]);

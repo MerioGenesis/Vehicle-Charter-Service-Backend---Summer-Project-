@@ -5,7 +5,7 @@ const BOOKING_SELECT = `
          b.b_timeStart, b.b_status, b.b_bookingTimestamp,
          b.b_u_id, b.b_v_id,
          u.u_f_name, u.u_l_name,
-         v.v_name, v.v_brand,
+         v.v_name, v.v_brand, v.v_imageURL,
          vt.vt_name
   FROM   Bookings b
   LEFT JOIN Users u        ON b.b_u_id = u.u_id
