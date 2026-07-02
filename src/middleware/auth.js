@@ -74,4 +74,30 @@ const requireBookingOwnerOrAdmin = (paramName = 'id') => async (req, res, next) 
   }
 };
 
-module.exports = { requireAuth, optionalAuth, requireRole, requireSelfOrRole, requireBookingOwnerOrAdmin };
+// Must run after requireAuth. Looks up the work assignment's employee and
+// allows the request if req.user is that employee or is an Admin.
+const requireAssignmentOwnerOrAdmin = (paramName = 'b_id') => async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+
+    const [rows] = await pool.query(
+      'SELECT wa_b_id, wa_u_id FROM Work_Assignments WHERE wa_b_id = ?',
+      [req.params[paramName]]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Work assignment not found' });
+
+    if (req.user.ut_name === 'Admin' || rows[0].wa_u_id === req.user.u_id) {
+      req.assignment = rows[0];
+      return next();
+    }
+    return res.status(403).json({ error: 'Forbidden: not your assignment' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = {
+  requireAuth, optionalAuth, requireRole, requireSelfOrRole,
+  requireBookingOwnerOrAdmin, requireAssignmentOwnerOrAdmin,
+};

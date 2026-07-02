@@ -18,7 +18,8 @@ const licensesCtrl            = require('../controllers/licensesController');
 const testsCtrl                = require('../controllers/testsController');
 const authCtrl                 = require('../controllers/authController');
 const {
-  requireAuth, optionalAuth, requireRole, requireSelfOrRole, requireBookingOwnerOrAdmin,
+  requireAuth, optionalAuth, requireRole, requireSelfOrRole,
+  requireBookingOwnerOrAdmin, requireAssignmentOwnerOrAdmin,
 } = require('../middleware/auth');
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -68,10 +69,12 @@ router.delete('/reviews/:id', requireAuth, requireRole('Admin'), reviewsCtrl.del
 
 // ── Work Assignments ──────────────────────────────────────────────────────────
 // ?u_id=N → employee's assignments | ?available=true → unstaffed assignments
-router.get   ('/workassignments',          workAssignmentsCtrl.getWorkAssignments);
-router.post  ('/workassignments',          workAssignmentsCtrl.createWorkAssignment);
-router.put   ('/workassignments/:b_id',    workAssignmentsCtrl.updateWorkAssignment);
-router.delete('/workassignments/:b_id',    workAssignmentsCtrl.deleteWorkAssignment);
+// Creating/removing an assignment flips the linked booking's status between
+// pending/confirmed — see workAssignmentsController.js.
+router.get   ('/workassignments',       requireAuth, requireRole('Employee', 'Admin'),      workAssignmentsCtrl.getWorkAssignments);
+router.post  ('/workassignments',       requireAuth, requireRole('Employee', 'Admin'),      workAssignmentsCtrl.createWorkAssignment);
+router.put   ('/workassignments/:b_id', requireAuth, requireAssignmentOwnerOrAdmin('b_id'), workAssignmentsCtrl.updateWorkAssignment);
+router.delete('/workassignments/:b_id', requireAuth, requireAssignmentOwnerOrAdmin('b_id'), workAssignmentsCtrl.deleteWorkAssignment);
 
 // ── Notifications (no guest access — always requires a token) ────────────────
 // ?unread=true, ?u_id=N → "my notifications"
@@ -82,16 +85,18 @@ router.put   ('/notifications/:id', requireAuth,                                
 router.delete('/notifications/:id', requireAuth, requireRole('Admin'),            notificationsCtrl.deleteNotification);
 
 // ── Licenses Obtained ─────────────────────────────────────────────────────────
-// ?u_id=N → employee-scoped
-router.get   ('/licensesobtained',                           licensesObtainedCtrl.getLicensesObtained);
-router.post  ('/licensesobtained',                           licensesObtainedCtrl.createLicenseObtained);
-router.delete('/licensesobtained/:u_id/:l_id/:expiryDate',   licensesObtainedCtrl.deleteLicenseObtained);
+// ?u_id=N → employee-scoped (forced to self unless Admin)
+router.get   ('/licensesobtained',                         requireAuth, requireRole('Employee', 'Admin'), licensesObtainedCtrl.getLicensesObtained);
+router.post  ('/licensesobtained',                         requireAuth, requireRole('Employee', 'Admin'), licensesObtainedCtrl.createLicenseObtained);
+router.put   ('/licensesobtained/:u_id/:l_id/:expiryDate', requireAuth, requireSelfOrRole('u_id', 'Admin'), licensesObtainedCtrl.updateLicenseObtained);
+router.delete('/licensesobtained/:u_id/:l_id/:expiryDate', requireAuth, requireSelfOrRole('u_id', 'Admin'), licensesObtainedCtrl.deleteLicenseObtained);
 
 // ── Tests Taken ───────────────────────────────────────────────────────────────
-// ?u_id=N → employee-scoped
-router.get   ('/teststaken',                          testsTakenCtrl.getTestsTaken);
-router.post  ('/teststaken',                          testsTakenCtrl.createTestTaken);
-router.delete('/teststaken/:t_id/:u_id/:testDate',    testsTakenCtrl.deleteTestTaken);
+// ?u_id=N → employee-scoped (forced to self unless Admin)
+router.get   ('/teststaken',                       requireAuth, requireRole('Employee', 'Admin'), testsTakenCtrl.getTestsTaken);
+router.post  ('/teststaken',                       requireAuth, requireRole('Employee', 'Admin'), testsTakenCtrl.createTestTaken);
+router.put   ('/teststaken/:t_id/:u_id/:testDate', requireAuth, requireSelfOrRole('u_id', 'Admin'), testsTakenCtrl.updateTestTaken);
+router.delete('/teststaken/:t_id/:u_id/:testDate', requireAuth, requireSelfOrRole('u_id', 'Admin'), testsTakenCtrl.deleteTestTaken);
 
 // ── Vehicle Certificates ──────────────────────────────────────────────────────
 // ?v_id=N → vehicle-scoped

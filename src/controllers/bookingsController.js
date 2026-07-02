@@ -2,7 +2,7 @@ const pool = require('../db/pool');
 
 const BOOKING_SELECT = `
   SELECT b.b_id, b.b_pickUpLocation, b.b_destination, b.b_dateFrom,
-         b.b_timeStart, b.b_bookingTimestamp,
+         b.b_timeStart, b.b_status, b.b_bookingTimestamp,
          b.b_u_id, b.b_v_id,
          u.u_f_name, u.u_l_name,
          v.v_name, v.v_brand,

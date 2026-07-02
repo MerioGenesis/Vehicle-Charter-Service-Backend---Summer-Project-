@@ -15,16 +15,25 @@ const NOTIF_SELECT = `
 const getNotifications = async (req, res) => {
   try {
     const unread = req.query.unread === 'true';
-    let   uId    = req.query.u_id ? parseInt(req.query.u_id) : null;
-
-    // Customers can only ever see their own notifications, regardless of query params.
-    if (req.user.ut_name === 'Customer') uId = req.user.u_id;
+    const uId    = req.query.u_id ? parseInt(req.query.u_id) : null;
 
     let sql = NOTIF_SELECT;
     const params = [];
     const where  = [];
 
-    if (uId)    { where.push('b.b_u_id = ?'); params.push(uId); }
+    // Customers/Employees can only ever see their own notifications,
+    // regardless of query params — a notification is "theirs" if it's for a
+    // booking they made (Customer) or a booking they're assigned to (Employee).
+    if (req.user.ut_name === 'Customer') {
+      where.push('b.b_u_id = ?');
+      params.push(req.user.u_id);
+    } else if (req.user.ut_name === 'Employee') {
+      where.push('EXISTS (SELECT 1 FROM Work_Assignments wa2 WHERE wa2.wa_b_id = b.b_id AND wa2.wa_u_id = ?)');
+      params.push(req.user.u_id);
+    } else if (uId) {
+      where.push('b.b_u_id = ?');
+      params.push(uId);
+    }
     if (unread) { where.push('n.n_status = 0'); }
     if (where.length) sql += ' WHERE ' + where.join(' AND ');
 

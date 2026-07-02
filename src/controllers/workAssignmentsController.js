@@ -2,7 +2,7 @@ const pool = require('../db/pool');
 
 const WA_SELECT = `
   SELECT wa.wa_b_id, wa.wa_u_id, wa.wa_startTime,
-         b.b_dateFrom,
+         b.b_dateFrom, b.b_status,
          v.v_name, v.v_brand,
          vt.vt_name,
          u.u_f_name, u.u_l_name
@@ -16,9 +16,11 @@ const WA_SELECT = `
 // A booking only gets a Work_Assignments row once an employee is assigned
 // (wa_u_id is NOT NULL there), so "available/unstaffed" means a booking with
 // no matching row at all — found by joining the other way, from Bookings.
+// This stays in sync with b_status because createWorkAssignment/
+// deleteWorkAssignment below are the only two places that ever change either.
 const AVAILABLE_SELECT = `
   SELECT b.b_id AS wa_b_id, NULL AS wa_u_id, NULL AS wa_startTime,
-         b.b_dateFrom,
+         b.b_dateFrom, b.b_timeStart, b.b_pickUpLocation, b.b_destination, b.b_status,
          v.v_name, v.v_brand,
          vt.vt_name
   FROM   Bookings b
@@ -57,17 +59,25 @@ const getWorkAssignments = async (req, res) => {
 };
 
 // POST /api/vcharter/workassignments
+// Assigning an employee to a booking is what moves it from pending to
+// confirmed (see bookings.b_status). Employees can only ever assign
+// themselves; only Admins may name a different employee.
 const createWorkAssignment = async (req, res) => {
   try {
-    const { wa_b_id, wa_u_id, wa_startTime } = req.body;
-    if (!wa_b_id || !wa_u_id || !wa_startTime) {
-      return res.status(400).json({ error: 'wa_b_id, wa_u_id and wa_startTime are required' });
+    const { wa_b_id, wa_startTime } = req.body;
+    if (!wa_b_id || !wa_startTime) {
+      return res.status(400).json({ error: 'wa_b_id and wa_startTime are required' });
     }
+
+    const wa_u_id = req.user.ut_name === 'Admin'
+      ? (req.body.wa_u_id || req.user.u_id)
+      : req.user.u_id;
 
     await pool.query(
       'INSERT INTO Work_Assignments (wa_b_id, wa_u_id, wa_startTime) VALUES (?, ?, ?)',
       [wa_b_id, wa_u_id, wa_startTime]
     );
+    await pool.query("UPDATE Bookings SET b_status = 'confirmed' WHERE b_id = ?", [wa_b_id]);
 
     const [rows] = await pool.query(WA_SELECT + ' WHERE wa.wa_b_id = ?', [wa_b_id]);
     res.status(201).json(rows[0]);
@@ -77,7 +87,8 @@ const createWorkAssignment = async (req, res) => {
   }
 };
 
-// PUT /api/vcharter/workassignments/:b_id  (assign employee or update start time)
+// PUT /api/vcharter/workassignments/:b_id  (reassign employee or update start time)
+// Booking stays confirmed either way — it remains staffed.
 const updateWorkAssignment = async (req, res) => {
   try {
     const { wa_u_id, wa_startTime } = req.body;
@@ -102,10 +113,12 @@ const updateWorkAssignment = async (req, res) => {
 };
 
 // DELETE /api/vcharter/workassignments/:b_id
+// Removing the only assignment un-staffs the booking again.
 const deleteWorkAssignment = async (req, res) => {
   try {
     const [result] = await pool.query('DELETE FROM Work_Assignments WHERE wa_b_id = ?', [req.params.b_id]);
     if (!result.affectedRows) return res.status(404).json({ error: 'Work assignment not found' });
+    await pool.query("UPDATE Bookings SET b_status = 'pending' WHERE b_id = ?", [req.params.b_id]);
     res.json({ message: 'Deleted' });
   } catch (err) {
     console.error(err);

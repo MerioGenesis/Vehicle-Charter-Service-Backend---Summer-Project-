@@ -28,6 +28,12 @@
 --     it was added via sql/migrations/001_add_user_password.sql as NULLable,
 --     since existing rows predate authentication; here, for fresh installs, it
 --     is declared NOT NULL since every new registration must set one.
+--   - bookings.b_status ('pending'/'confirmed') was added after the appendix
+--     was written (sql/migrations/002_add_booking_status.sql on the live
+--     database). New bookings start pending; workAssignmentsController.js
+--     flips it to confirmed when an employee is assigned, and back to
+--     pending if that assignment is removed — it is not directly editable
+--     via PUT /bookings/:id.
 
 CREATE DATABASE IF NOT EXISTS vehiclecharter
   CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
@@ -109,6 +115,7 @@ CREATE TABLE bookings (
   b_destination      VARCHAR(100) NOT NULL,
   b_dateFrom         DATE NOT NULL,
   b_timeStart        TIME NOT NULL,
+  b_status           ENUM('pending','confirmed') NOT NULL DEFAULT 'pending',
   b_bookingTimestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   b_u_id             INT(6) NOT NULL,
   b_v_id             INT(6) NOT NULL,
